@@ -43,7 +43,8 @@ function run(program: Uint8Array, input: Uint8Array): { stdout: Uint8Array; exit
   for (;;) {
     if (steps === 1000000) return trap(10);
     if (pc < 0 || pc >= n) return trap(9);
-    const info = OP_INFO[program[pc]];
+    const op = program[pc];
+    const info = OP_INFO[op];
     if (info === 0) return trap(5);
     const imm = (info >> 1) & 7;
     const pops = (info >> 4) & 3;
@@ -53,36 +54,7 @@ function run(program: Uint8Array, input: Uint8Array): { stdout: Uint8Array; exit
     const next = pc + 1 + imm;
     if (sp < pops) return trap(2);
     if (sp - pops + pushes > 256) return trap(3);
-    const op = program[pc];
     pc = next;
-
-    if (op >= 0x10 && op <= 0x22 && op !== 0x17 && op !== 0x1b) {
-      const b = D[sp - 1];
-      const a = D[sp - 2];
-      if (op >= 0x13 && op <= 0x16 && b === 0) return trap(4);
-      let r = 0;
-      switch (op) {
-        case 0x10: r = (a + b) | 0; break;
-        case 0x11: r = (a - b) | 0; break;
-        case 0x12: r = Math.imul(a, b); break;
-        case 0x13: r = a === -2147483648 && b === -1 ? a : (a / b) | 0; break;
-        case 0x14: r = b === -1 ? 0 : (a % b) | 0; break;
-        case 0x15: r = Math.floor((a >>> 0) / (b >>> 0)) | 0; break;
-        case 0x16: r = ((a >>> 0) % (b >>> 0)) | 0; break;
-        case 0x18: r = a & b; break;
-        case 0x19: r = a | b; break;
-        case 0x1a: r = a ^ b; break;
-        case 0x1c: r = a << (b & 31); break;
-        case 0x1d: r = a >> (b & 31); break;
-        case 0x1e: r = (a >>> (b & 31)) | 0; break;
-        case 0x20: r = a === b ? 1 : 0; break;
-        case 0x21: r = a < b ? 1 : 0; break;
-        case 0x22: r = (a >>> 0) < (b >>> 0) ? 1 : 0; break;
-      }
-      sp -= 2;
-      D[sp++] = r;
-      continue;
-    }
 
     switch (op) {
       case 0x00: return done(0);
@@ -106,8 +78,32 @@ function run(program: Uint8Array, input: Uint8Array): { stdout: Uint8Array; exit
         D[sp - 1] = a;
         break;
       }
+      case 0x10: D[sp - 2] = (D[sp - 2] + D[sp - 1]) | 0; sp--; break;
+      case 0x11: D[sp - 2] = (D[sp - 2] - D[sp - 1]) | 0; sp--; break;
+      case 0x12: D[sp - 2] = Math.imul(D[sp - 2], D[sp - 1]); sp--; break;
+      case 0x13:
+      case 0x14:
+      case 0x15:
+      case 0x16: {
+        const b = D[--sp], a = D[sp - 1];
+        if (b === 0) return trap(4);
+        if (op === 0x13) D[sp - 1] = a === -2147483648 && b === -1 ? a : (a / b) | 0;
+        else if (op === 0x14) D[sp - 1] = b === -1 ? 0 : (a % b) | 0;
+        else if (op === 0x15) D[sp - 1] = Math.floor((a >>> 0) / (b >>> 0)) | 0;
+        else D[sp - 1] = ((a >>> 0) % (b >>> 0)) | 0;
+        break;
+      }
       case 0x17: D[sp - 1] = (-D[sp - 1]) | 0; break;
+      case 0x18: D[sp - 2] = D[sp - 2] & D[sp - 1]; sp--; break;
+      case 0x19: D[sp - 2] = D[sp - 2] | D[sp - 1]; sp--; break;
+      case 0x1a: D[sp - 2] = D[sp - 2] ^ D[sp - 1]; sp--; break;
       case 0x1b: D[sp - 1] = ~D[sp - 1]; break;
+      case 0x1c: D[sp - 2] = D[sp - 2] << (D[sp - 1] & 31); sp--; break;
+      case 0x1d: D[sp - 2] = D[sp - 2] >> (D[sp - 1] & 31); sp--; break;
+      case 0x1e: D[sp - 2] = (D[sp - 2] >>> (D[sp - 1] & 31)) | 0; sp--; break;
+      case 0x20: D[sp - 2] = D[sp - 2] === D[sp - 1] ? 1 : 0; sp--; break;
+      case 0x21: D[sp - 2] = D[sp - 2] < D[sp - 1] ? 1 : 0; sp--; break;
+      case 0x22: D[sp - 2] = (D[sp - 2] >>> 0) < (D[sp - 1] >>> 0) ? 1 : 0; sp--; break;
       case 0x30:
       case 0x31:
       case 0x32: {
