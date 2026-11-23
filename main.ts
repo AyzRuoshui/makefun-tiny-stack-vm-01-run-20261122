@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Opcode table: [opcode, immediate bytes, pops, pushes]
-const OP_DEFS: [number, number, number, number][] = [
+const OP_DEFS = [
   [0x00, 0, 0, 0], [0x01, 1, 0, 1], [0x02, 4, 0, 1], [0x03, 0, 1, 0],
   [0x04, 0, 1, 2], [0x05, 0, 2, 2], [0x06, 0, 2, 3], [0x07, 0, 3, 3],
   [0x10, 0, 2, 1], [0x11, 0, 2, 1], [0x12, 0, 2, 1], [0x13, 0, 2, 1],
@@ -26,6 +26,7 @@ const D = new Int32Array(256);
 const C = new Int32Array(64);
 const M = new Int32Array(256);
 const out = new Uint8Array(65536);
+const numBuf = new Uint8Array(12);
 
 function run(program: Uint8Array, input: Uint8Array): { stdout: Uint8Array; exit: number } {
   const n = program.length;
@@ -136,10 +137,23 @@ function run(program: Uint8Array, input: Uint8Array): { stdout: Uint8Array; exit
         break;
       }
       case 0x50: {
-        const s = String(D[sp - 1]);
-        if (olen + s.length > 65536) return trap(11);
+        let v = D[sp - 1];
+        let p = 12;
+        if (v === 0) {
+          numBuf[--p] = 48;
+        } else {
+          const neg = v < 0;
+          let u = neg ? -v : v;
+          while (u > 0) {
+            numBuf[--p] = 48 + (u % 10);
+            u = Math.floor(u / 10);
+          }
+          if (neg) numBuf[--p] = 45;
+        }
+        const len = 12 - p;
+        if (olen + len > 65536) return trap(11);
         sp--;
-        for (let i = 0; i < s.length; i++) out[olen++] = s.charCodeAt(i);
+        while (p < 12) out[olen++] = numBuf[p++];
         break;
       }
       case 0x51:
